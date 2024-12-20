@@ -72,6 +72,15 @@ def private_key_to_compressed_address(private_key_hex):
     print(f"Generated Bitcoin address: {bitcoin_address}")
     return bitcoin_address
 
+def apply_qft(circuit, num_qubits):
+    """Applies the Quantum Fourier Transform to the first num_qubits."""
+    for j in range(num_qubits):
+        circuit.h(j)
+        for k in range(j + 1, num_qubits):
+            circuit.cp(np.pi / (2 ** (k - j)), j, k)
+    for j in range(num_qubits // 2):
+        circuit.swap(j, num_qubits - j - 1)
+
 # New oracle that marks the target state for Grover's algorithm
 def grover_oracle(circuit, private_key_qubits, public_key_x, g_x, g_y, p, ancilla):
     """Oracle for Grover's algorithm that checks if the current private key qubits 
@@ -185,7 +194,7 @@ def create_diffusion_operator(num_qubits):
 
     return qc
 
-def grovers_algorithm(num_qubits, target_state, iterations=150000):
+def grovers_algorithm(num_qubits, target_state, iterations=64):
     print("Setting up Grover's algorithm...")
     circuit = QuantumCircuit(num_qubits, num_qubits)
 
@@ -214,17 +223,8 @@ def grovers_algorithm(num_qubits, target_state, iterations=150000):
 
     return circuit
 
-def apply_qft(circuit, num_qubits):
-    """Applies the Quantum Fourier Transform to the first num_qubits."""
-    for j in range(num_qubits):
-        circuit.h(j)
-        for k in range(j + 1, num_qubits):
-            circuit.cp(np.pi / (2 ** (k - j)), j, k)
-    for j in range(num_qubits // 2):
-        circuit.swap(j, num_qubits - j - 1)
-
 # Quantum Brute-Force search using Grover's algorithm
-def grovers_bruteforce(target_address, keyspace_size=None, num_qubits=17, iterations=150000):
+def grovers_bruteforce(target_address, keyspace_size=None, num_qubits=17, iterations=None):
     if keyspace_size is None:
         keyspace_size = 0x1ffff - 0x10000 + 1
 
@@ -234,7 +234,7 @@ def grovers_bruteforce(target_address, keyspace_size=None, num_qubits=17, iterat
 
     # Calculate iterations if not provided
     if iterations is None:
-        iterations = 150000
+        iterations = int((keyspace_size) ** 0.5)
 
     # Initialize Grover's algorithm circuit
     circuit = grovers_algorithm(num_qubits, target_state, iterations)
@@ -244,7 +244,7 @@ def grovers_bruteforce(target_address, keyspace_size=None, num_qubits=17, iterat
 
 def retrieve_job_result(job_id, target_address):
     print(f"Retrieving job result for job ID: {job_id}...")
-    quantum_registers = 17  # Use 17 qubits for the search
+    quantum_registers = 17  # Use 125 qubits for the search
     try:
         job = service.job(job_id)
         result = job.result()
@@ -354,7 +354,7 @@ def quantum_brute_force(public_key_x: int, g_x: int, g_y: int, p: int, min_range
     attempt = 0
     failed_backends = set()
     num_ancillas = 1
-    num_iterations = 150000
+    num_iterations = int((max_range - min_range) ** 0.5)
 
     service = QiskitRuntimeService()
 
@@ -385,12 +385,12 @@ def quantum_brute_force(public_key_x: int, g_x: int, g_y: int, p: int, min_range
 
         # Get a list of available backends
         available_backends = service.backends() 
-        backend = service.backend('ibm_sherbrooke')      
+        backend = service.backend('ibm_brisbane')      
         print(f"Selected backend: {backend}")        
 
         # Transpile and run the circuit
         print("Transpiling the circuit for the selected backend.")
-        transpiled_circuit = transpile(circuit, backend=backend)
+        transpiled_circuit = transpile(circuit, backend=backend, optimization_level=3)
         print("Circuit transpiled.")
 
         job = backend.run([transpiled_circuit], shots=8192)
@@ -413,10 +413,10 @@ def main():
     target_address = '1HduPEXZRdG26SUT5Yk83mLkPyjnZuJ7Bm'
     public_key_x_hex = "033f688bae8321b8e02b7e6c0a55c2515fb25ab97d85fda842449f7bfa04e128c3"
     public_key_x = int(public_key_x_hex[2:], 16)
-    num_qubits = 17  # Adjust the number of qubits as needed
+
     # Elliptic curve parameters
     g_x = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798
-    g_y = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
+    g_y = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199B0C75643B8F8E4F
     p = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
     min_range = 0x10000  # Adjust this range as needed
     max_range = 0x1ffff  # Adjust to fit within 17 bits
@@ -444,3 +444,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
